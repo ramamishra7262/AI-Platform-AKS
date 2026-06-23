@@ -1,0 +1,76 @@
+name: Terraform
+
+on:
+  push:
+    branches: [main]
+    paths: [terraform/**]
+  pull_request:
+    branches: [main]
+    paths: [terraform/**]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment
+        required: true
+        default: dev
+        type: choice
+        options: [dev, qa, prod]
+      action:
+        description: Action
+        required: true
+        default: plan
+        type: choice
+        options: [plan, apply, destroy]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.4
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_BACKEND_RG }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_BACKEND_SA }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=${{ github.event.inputs.environment || 'dev' }}/terraform.tfstate"
+        env:
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Terraform Plan
+        working-directory: terraform
+        run: |
+          terraform plan \
+            -var-file="environments/${{ github.event.inputs.environment || 'dev' }}/terraform.tfvars" \
+            -out=plan.tfplan -no-color 2>&1 | tee plan.txt
+        env:
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply' && github.event_name == 'workflow_dispatch'
+        working-directory: terraform
+        run: terraform apply -auto-approve plan.tfplan
+        env:
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}

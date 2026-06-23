@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "genai.labels" . | nindent 4 }}
+    app: backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  selector:
+    matchLabels:
+      app: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels:
+        app: backend
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: {{ .Values.backend.serviceAccountName }}
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: genai-secrets
+      containers:
+        - name: backend
+          image: {{ include "genai.image" (dict "Values" .Values "image" .Values.backend.image "tag" .Values.backend.tag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.backend.port }}
+          volumeMounts:
+            - name: secrets-store
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
+          env:
+            - name: AZURE_OPENAI_ENDPOINT
+              value: {{ .Values.openai.endpoint | quote }}
+            - name: AZURE_OPENAI_CHAT_DEPLOYMENT
+              value: {{ .Values.openai.chatDeployment | quote }}
+            - name: AZURE_SEARCH_ENDPOINT
+              value: {{ .Values.azureSearch.endpoint | quote }}
+            - name: AZURE_SEARCH_INDEX
+              value: {{ .Values.azureSearch.indexName | quote }}
+            - name: ENVIRONMENT
+              value: {{ .Values.global.environment | quote }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /readyz, port: {{ .Values.backend.port }} }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: { path: /healthz, port: {{ .Values.backend.port }} }
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }

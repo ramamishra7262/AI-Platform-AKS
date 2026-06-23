@@ -1,0 +1,39 @@
+name: Deploy to AKS (GitOps via ArgoCD)
+
+on:
+  workflow_run:
+    workflows: ["CI - Build, Test & Push"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment
+        required: true
+        default: dev
+        type: choice
+        options: [dev, qa, prod]
+      imageTag:
+        description: Image tag
+        default: latest
+
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  update-gitops:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update image tags in Helm values
+        run: |
+          TAG=${{ github.event.inputs.imageTag || github.event.workflow_run.head_sha || 'latest' }}
+          ENV=${{ github.event.inputs.environment || 'prod' }}
+          sed -i "s/tag: .*/tag: ${TAG}/" helm/genai-platform/values.yaml
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add helm/genai-platform/values.yaml
+          git commit -m "chore: update image tags to ${TAG} for ${ENV}" || true
+          git push

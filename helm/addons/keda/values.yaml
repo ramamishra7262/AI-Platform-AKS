@@ -1,0 +1,27 @@
+keda:
+  image:
+    tag: "2.14.0"
+  resources:
+    operator:
+      requests: { cpu: "100m", memory: "128Mi" }
+      limits:   { cpu: "500m", memory: "512Mi" }
+  serviceAccount:
+    annotations:
+      azure.workload.identity/client-id: "<KEDA_CLIENT_ID>"
+
+# KEDA ScaledObject for ingestion service
+scaledObjects:
+  - name: ingestion-scaledobject
+    namespace: genai
+    spec:
+      scaleTargetRef:
+        name: ingestion-service
+      minReplicaCount: 0
+      maxReplicaCount: 10
+      triggers:
+        - type: azure-blob
+          metadata:
+            blobContainerName: documents
+            blobCount: "1"
+            accountName: "<STORAGE_ACCOUNT>"
+            cloud: AzurePublicCloud

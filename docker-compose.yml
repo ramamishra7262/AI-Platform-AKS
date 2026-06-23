@@ -1,0 +1,27 @@
+# Local development stack
+version: "3.9"
+services:
+  backend:
+    build: ./apps/backend
+    ports: ["8000:8000"]
+    env_file: ./apps/backend/.env
+    depends_on: [rag-service]
+
+  rag-service:
+    build: ./apps/rag-service
+    ports: ["8001:8001"]
+    env_file: ./apps/rag-service/.env
+
+  ingestion-service:
+    build: ./apps/ingestion-service
+    ports: ["8002:8002"]
+    env_file: ./apps/ingestion-service/.env
+    depends_on: [rag-service]
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports: ["3000:80"]
+    depends_on: [backend]

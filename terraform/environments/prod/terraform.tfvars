@@ -1,0 +1,11 @@
+environment         = "prod"
+location            = "eastus"
+project             = "genai"
+system_node_count   = 3
+system_node_vm_size = "Standard_D8s_v5"
+user_node_count     = 3
+user_node_vm_size   = "Standard_D16s_v5"
+user_node_max_count = 20
+gpt4o_capacity      = 50
+embedding_capacity  = 50
+search_sku          = "standard2"

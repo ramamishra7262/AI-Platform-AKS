@@ -1,0 +1,25 @@
+cert-manager:
+  installCRDs: true
+  resources:
+    requests: { cpu: "10m", memory: "32Mi" }
+  prometheus:
+    enabled: true
+
+# ClusterIssuers
+clusterIssuers:
+  - name: letsencrypt-prod
+    spec:
+      acme:
+        server: https://acme-v02.api.letsencrypt.org/directory
+        email: platform@company.com
+        privateKeySecretRef:
+          name: letsencrypt-prod
+        solvers:
+          - dns01:
+              azureDNS:
+                resourceGroupName: "<DNS_RESOURCE_GROUP>"
+                subscriptionID: "<SUBSCRIPTION_ID>"
+                hostedZoneName: example.com
+                environment: AzurePublicCloud
+                managedIdentity:
+                  clientID: "<CERT_MANAGER_CLIENT_ID>"

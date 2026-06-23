@@ -1,0 +1,76 @@
+# Azure DevOps Pipeline: Terraform Plan
+trigger: none
+pr:
+  branches:
+    include: [main, develop]
+  paths:
+    include: [terraform/**]
+
+parameters:
+  - name: environment
+    displayName: Environment
+    type: string
+    default: dev
+    values: [dev, qa, prod]
+
+variables:
+  - group: genai-platform-secrets
+  - name: TF_VERSION
+    value: "1.8.4"
+  - name: TF_WORKING_DIR
+    value: terraform
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: TerraformPlan
+    displayName: Terraform Plan - ${{ parameters.environment }}
+    jobs:
+      - job: Plan
+        steps:
+          - task: TerraformInstaller@1
+            inputs:
+              terraformVersion: $(TF_VERSION)
+
+          - task: AzureCLI@2
+            displayName: Terraform Init
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                export ARM_CLIENT_ID=$servicePrincipalId
+                export ARM_CLIENT_SECRET=$servicePrincipalKey
+                export ARM_TENANT_ID=$tenantId
+                export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                cd $(TF_WORKING_DIR)
+                terraform init \
+                  -backend-config="resource_group_name=$(TF_BACKEND_RG)" \
+                  -backend-config="storage_account_name=$(TF_BACKEND_SA)" \
+                  -backend-config="container_name=tfstate" \
+                  -backend-config="key=${{ parameters.environment }}/terraform.tfstate"
+
+          - task: AzureCLI@2
+            displayName: Terraform Plan
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                export ARM_CLIENT_ID=$servicePrincipalId
+                export ARM_CLIENT_SECRET=$servicePrincipalKey
+                export ARM_TENANT_ID=$tenantId
+                export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                cd $(TF_WORKING_DIR)
+                terraform plan \
+                  -var-file="environments/${{ parameters.environment }}/terraform.tfvars" \
+                  -out="${{ parameters.environment }}.tfplan" \
+                  -no-color 2>&1 | tee plan.txt
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: $(TF_WORKING_DIR)/${{ parameters.environment }}.tfplan
+              artifact: tfplan-${{ parameters.environment }}

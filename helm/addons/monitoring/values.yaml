@@ -1,0 +1,47 @@
+# kube-prometheus-stack values
+kubePrometheusStack:
+  prometheus:
+    retention: 30d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-premium
+          resources:
+            requests:
+              storage: 100Gi
+    additionalScrapeConfigs:
+      - job_name: genai-platform
+        static_configs:
+          - targets: ['backend.genai:8000', 'rag-service.genai:8001']
+    alertmanagerConfig:
+      route:
+        receiver: slack
+      receivers:
+        - name: slack
+          slack_configs:
+            - api_url: "<SLACK_WEBHOOK_URL>"
+              channel: "#platform-alerts"
+  grafana:
+    adminPassword: changeme
+    persistence:
+      enabled: true
+      size: 10Gi
+    dashboards:
+      default:
+        genai-platform:
+          json: |
+            { "title": "GenAI Platform", "panels": [] }
+  loki:
+    persistence:
+      enabled: true
+      size: 50Gi
+    config:
+      schema_config:
+        configs:
+          - from: "2024-01-01"
+            store: boltdb-shipper
+            object_store: azure
+            schema: v11
+            index:
+              prefix: index_
+              period: 24h

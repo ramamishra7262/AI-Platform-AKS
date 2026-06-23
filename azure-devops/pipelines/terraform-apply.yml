@@ -1,0 +1,74 @@
+# Azure DevOps Pipeline: Terraform Apply
+trigger: none
+
+parameters:
+  - name: environment
+    displayName: Environment
+    type: string
+    default: dev
+    values: [dev, qa, prod]
+
+variables:
+  - group: genai-platform-secrets
+  - name: TF_VERSION
+    value: "1.8.4"
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: TerraformApply
+    displayName: Terraform Apply - ${{ parameters.environment }}
+    jobs:
+      - deployment: Apply
+        environment: ${{ parameters.environment }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: tfplan-${{ parameters.environment }}
+
+                - task: TerraformInstaller@1
+                  inputs:
+                    terraformVersion: $(TF_VERSION)
+
+                - task: AzureCLI@2
+                  displayName: Terraform Apply
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      export ARM_CLIENT_ID=$servicePrincipalId
+                      export ARM_CLIENT_SECRET=$servicePrincipalKey
+                      export ARM_TENANT_ID=$tenantId
+                      export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                      cd terraform
+                      terraform init \
+                        -backend-config="resource_group_name=$(TF_BACKEND_RG)" \
+                        -backend-config="storage_account_name=$(TF_BACKEND_SA)" \
+                        -backend-config="container_name=tfstate" \
+                        -backend-config="key=${{ parameters.environment }}/terraform.tfstate"
+                      terraform apply -auto-approve \
+                        "$(Pipeline.Workspace)/tfplan-${{ parameters.environment }}/${{ parameters.environment }}.tfplan"
+
+                - task: AzureCLI@2
+                  displayName: Export Terraform Outputs
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      export ARM_CLIENT_ID=$servicePrincipalId
+                      export ARM_CLIENT_SECRET=$servicePrincipalKey
+                      export ARM_TENANT_ID=$tenantId
+                      export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                      cd terraform
+                      terraform output -json > outputs.json
+                      cat outputs.json
+                      AKS_NAME=$(terraform output -raw aks_cluster_name)
+                      RG=$(terraform output -raw resource_group_name)
+                      az aks get-credentials --resource-group $RG --name $AKS_NAME --overwrite-existing

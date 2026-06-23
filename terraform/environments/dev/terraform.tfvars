@@ -1,0 +1,16 @@
+environment         = "dev"
+location            = "eastus"
+project             = "genai"
+vnet_address_space  = ["10.0.0.0/8"]
+aks_subnet_cidr     = "10.1.0.0/16"
+pe_subnet_cidr      = "10.2.0.0/24"
+appgw_subnet_cidr   = "10.3.0.0/24"
+kubernetes_version  = "1.30"
+system_node_count   = 1
+system_node_vm_size = "Standard_D4s_v5"
+user_node_count     = 1
+user_node_vm_size   = "Standard_D4s_v5"
+user_node_max_count = 4
+gpt4o_capacity      = 10
+embedding_capacity  = 10
+search_sku          = "basic"

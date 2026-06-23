@@ -1,0 +1,14 @@
+external-dns:
+  provider: azure
+  azure:
+    resourceGroup: "<DNS_RESOURCE_GROUP>"
+    tenantId: "<TENANT_ID>"
+    subscriptionId: "<SUBSCRIPTION_ID>"
+    useManagedIdentityExtension: true
+    userAssignedIdentityID: "<EXTERNAL_DNS_CLIENT_ID>"
+  domainFilters:
+    - example.com
+  policy: sync
+  txtOwnerId: aks-genai-platform
+  resources:
+    requests: { cpu: "10m", memory: "32Mi" }

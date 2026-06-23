@@ -1,0 +1,9 @@
+environment         = "qa"
+location            = "eastus"
+project             = "genai"
+system_node_count   = 2
+user_node_count     = 2
+user_node_max_count = 6
+gpt4o_capacity      = 20
+embedding_capacity  = 20
+search_sku          = "standard"

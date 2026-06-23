@@ -1,0 +1,9 @@
+secrets-store-csi-driver:
+  enableSecretRotation: true
+  rotationPollInterval: "2m"
+  syncSecret:
+    enabled: true
+
+azure-keyvault-provider:
+  resources:
+    requests: { cpu: "50m", memory: "64Mi" }

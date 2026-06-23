@@ -1,0 +1,87 @@
+# Azure DevOps Pipeline: Docker Build, Scan and Push
+trigger:
+  branches:
+    include: [main, develop]
+  paths:
+    include: [apps/**]
+
+parameters:
+  - name: environment
+    type: string
+    default: dev
+    values: [dev, qa, prod]
+
+variables:
+  - group: genai-platform-secrets
+  - name: IMAGE_TAG
+    value: $(Build.BuildId)
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: BuildAndPush
+    displayName: Build, Scan & Push
+    jobs:
+      - job: BuildBackend
+        displayName: Backend
+        steps:
+          - task: AzureCLI@2
+            displayName: Build & Push Backend
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az acr login --name $(ACR_NAME)
+                docker build -t $(ACR_NAME).azurecr.io/backend:$(IMAGE_TAG) ./apps/backend
+                docker build -t $(ACR_NAME).azurecr.io/backend:latest ./apps/backend
+                # Trivy scan
+                docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                  aquasec/trivy:latest image --exit-code 0 --severity HIGH,CRITICAL \
+                  $(ACR_NAME).azurecr.io/backend:$(IMAGE_TAG)
+                docker push $(ACR_NAME).azurecr.io/backend:$(IMAGE_TAG)
+                docker push $(ACR_NAME).azurecr.io/backend:latest
+
+      - job: BuildRagService
+        displayName: RAG Service
+        steps:
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az acr login --name $(ACR_NAME)
+                docker build -t $(ACR_NAME).azurecr.io/rag-service:$(IMAGE_TAG) ./apps/rag-service
+                docker push $(ACR_NAME).azurecr.io/rag-service:$(IMAGE_TAG)
+                docker push $(ACR_NAME).azurecr.io/rag-service:latest
+
+      - job: BuildIngestion
+        displayName: Ingestion Service
+        steps:
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az acr login --name $(ACR_NAME)
+                docker build -t $(ACR_NAME).azurecr.io/ingestion-service:$(IMAGE_TAG) ./apps/ingestion-service
+                docker push $(ACR_NAME).azurecr.io/ingestion-service:$(IMAGE_TAG)
+                docker push $(ACR_NAME).azurecr.io/ingestion-service:latest
+
+      - job: BuildFrontend
+        displayName: Frontend
+        steps:
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az acr login --name $(ACR_NAME)
+                docker build --build-arg VITE_API_URL=$(API_URL) \
+                  -t $(ACR_NAME).azurecr.io/frontend:$(IMAGE_TAG) ./apps/frontend
+                docker push $(ACR_NAME).azurecr.io/frontend:$(IMAGE_TAG)
+                docker push $(ACR_NAME).azurecr.io/frontend:latest

@@ -1,0 +1,71 @@
+global:
+  environment: dev
+  registry: ""  # ACR login server
+  imagePullPolicy: IfNotPresent
+  namespace: genai
+
+backend:
+  image: aks-copilot-backend
+  tag: latest
+  replicas: 2
+  port: 8000
+  resources:
+    requests: { cpu: "200m", memory: "256Mi" }
+    limits:   { cpu: "1000m", memory: "1Gi" }
+  serviceAccountName: backend-sa
+  env: {}
+
+ragService:
+  image: aks-copilot-rag
+  tag: latest
+  replicas: 2
+  port: 8001
+  resources:
+    requests: { cpu: "500m", memory: "512Mi" }
+    limits:   { cpu: "2000m", memory: "2Gi" }
+  serviceAccountName: rag-sa
+
+ingestionService:
+  image: aks-copilot-ingestion
+  tag: latest
+  replicas: 1
+  port: 8002
+  resources:
+    requests: { cpu: "500m", memory: "512Mi" }
+    limits:   { cpu: "2000m", memory: "2Gi" }
+  serviceAccountName: ingestion-sa
+
+frontend:
+  image: aks-copilot-frontend
+  tag: latest
+  replicas: 2
+  port: 80
+  resources:
+    requests: { cpu: "50m", memory: "64Mi" }
+    limits:   { cpu: "200m", memory: "128Mi" }
+
+ingress:
+  enabled: true
+  className: nginx
+  host: genai.example.com
+  tlsSecretName: genai-tls
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+keyvault:
+  name: ""
+  tenantId: ""
+  clientId: ""
+
+azureSearch:
+  endpoint: ""
+  indexName: documents-index
+
+openai:
+  endpoint: ""
+  chatDeployment: gpt-4o
+  embeddingDeployment: text-embedding-3-large

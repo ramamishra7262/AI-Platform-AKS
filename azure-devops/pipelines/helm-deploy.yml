@@ -1,0 +1,90 @@
+# Azure DevOps Pipeline: Helm Deploy to AKS
+trigger: none
+
+parameters:
+  - name: environment
+    type: string
+    default: dev
+    values: [dev, qa, prod]
+  - name: imageTag
+    type: string
+    default: latest
+
+variables:
+  - group: genai-platform-secrets
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: HelmDeploy
+    displayName: Deploy GenAI Platform to ${{ parameters.environment }}
+    jobs:
+      - deployment: Deploy
+        environment: ${{ parameters.environment }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureCLI@2
+                  displayName: Install addons via Helm
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      az aks get-credentials --resource-group $(RESOURCE_GROUP) \
+                        --name $(AKS_CLUSTER_NAME) --overwrite-existing
+                      # Install cert-manager
+                      helm repo add jetstack https://charts.jetstack.io && helm repo update
+                      helm upgrade --install cert-manager jetstack/cert-manager \
+                        --namespace cert-manager --create-namespace \
+                        --values helm/addons/cert-manager/values.yaml
+                      # Install NGINX ingress
+                      helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+                      helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+                        --namespace ingress-nginx --create-namespace \
+                        --values helm/addons/ingress-nginx/values.yaml
+                      # Install KEDA
+                      helm repo add kedacore https://kedacore.github.io/charts
+                      helm upgrade --install keda kedacore/keda \
+                        --namespace keda --create-namespace \
+                        --values helm/addons/keda/values.yaml
+                      # Secrets Store CSI Driver
+                      helm repo add csi-secrets-store-provider-azure \
+                        https://azure.github.io/secrets-store-csi-driver-provider-azure/charts
+                      helm upgrade --install csi-secrets-store-provider-azure \
+                        csi-secrets-store-provider-azure/csi-secrets-store-provider-azure \
+                        --namespace kube-system
+
+                - task: AzureCLI@2
+                  displayName: Deploy GenAI Platform Helm chart
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      az aks get-credentials --resource-group $(RESOURCE_GROUP) \
+                        --name $(AKS_CLUSTER_NAME) --overwrite-existing
+                      helm upgrade --install genai-platform ./helm/genai-platform \
+                        --namespace genai --create-namespace \
+                        --values helm/genai-platform/values.yaml \
+                        --values helm/genai-platform/values-${{ parameters.environment }}.yaml \
+                        --set global.registry=$(ACR_NAME).azurecr.io \
+                        --set backend.tag=${{ parameters.imageTag }} \
+                        --set ragService.tag=${{ parameters.imageTag }} \
+                        --set ingestionService.tag=${{ parameters.imageTag }} \
+                        --set frontend.tag=${{ parameters.imageTag }} \
+                        --set keyvault.name=$(KEYVAULT_NAME) \
+                        --set keyvault.tenantId=$(TENANT_ID) \
+                        --set openai.endpoint=$(OPENAI_ENDPOINT) \
+                        --set azureSearch.endpoint=$(SEARCH_ENDPOINT) \
+                        --wait --timeout 10m
+
+                - task: Kubernetes@1
+                  displayName: Smoke Test
+                  inputs:
+                    command: exec
+                    arguments: >
+                      -n genai -it $(kubectl -n genai get pod -l app=backend -o name | head -1)
+                      -- curl -sf http://localhost:8000/healthz
